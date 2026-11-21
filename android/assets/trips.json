@@ -1,0 +1,4 @@
+[
+  {"id":"MD-0042","truck":"DEMO-VEHICLE-06","origin":"Demo Depot A","window":"Today, 9:00 WAT","stops":[{"name":"Sample Stop A","area":"Demo Zone A"},{"name":"Sample Stop B","area":"Demo Zone B"}]},
+  {"id":"MD-0045","truck":"DEMO-VEHICLE-06","origin":"Demo Depot A","window":"Next assignment","stops":[{"name":"Sample Stop C","area":"Demo Zone C"}]}
+]

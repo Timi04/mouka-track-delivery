@@ -1,0 +1,19 @@
+import {findDriver, normalizePhone, signedInDriver, endDriverSession} from './access.js';
+
+window.findDriver = (value, allowId) => findDriver(value, allowId, id => getDriverData(id).profile);
+window.normalizePhone = normalizePhone;
+
+const driver = signedInDriver();
+if (!driver) {
+  location.replace('/#/driver-sign-in');
+} else {
+  window.enterDriverWorkspace(driver);
+  window.refreshDriver();
+  document.getElementById('driverWorkspace').hidden = false;
+}
+
+document.getElementById('signOut').addEventListener('click', () => {
+  endDriverSession();
+  window.closeDriverNavigation();
+  location.assign('/#/driver-sign-in');
+});

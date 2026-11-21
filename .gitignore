@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules/
+android/out/
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
