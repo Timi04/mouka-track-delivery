@@ -104,6 +104,7 @@ function render() {
       <div class="stat">${svg('truck')}<span><small>Vehicle</small><b>${safe(trip.truck)}</b></span></div>
       <div class="stat">${svg('time')}<span><small>Departure</small><b>${safe(trip.window)}</b></span></div>
     </div>
+    <progress class="trip-meter" value="${done}" max="${total}" aria-label="${done} of ${total} stops confirmed"></progress>
   </section>
   <div class="status"><span class="tile ${tracking ? 'live' : active ? 'attention' : ''}">${svg('gps')}</span>
     <span><b>${tracking ? 'Simulated tracking on' : active ? 'Tracking paused' : 'Simulated tracking off'}</b>

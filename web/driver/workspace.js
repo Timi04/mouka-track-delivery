@@ -37,6 +37,8 @@ const navMarkup = items => items.map(([page,label,icon]) => `<button type="butto
 ui('driverNav').innerHTML = navMarkup(navigation);
 ui('driverSettingsLinks').innerHTML = navMarkup(accountLinks);
 ui('appearanceOptions').innerHTML = ['system','light','dark'].map(theme => `<button type="button" data-theme-choice="${theme}">${svg(theme)}${theme[0].toUpperCase()+theme.slice(1)}</button>`).join('');
+ui('tabbar').innerHTML = [['overview','Home','grid'],['trips','Trips','truck'],['notifications','Alerts','bell'],['issue','Report','warning'],['profile','Profile','user']]
+  .map(([page,label,icon]) => `<button type="button" data-page="${page}">${svg(icon)}<span>${label}</span></button>`).join('');
 ui('navToggle').innerHTML = svg('menu');
 ui('navClose').innerHTML = svg('close');
 ui('accountChevron').innerHTML = svg('up');
@@ -262,7 +264,7 @@ const screens = {overview,trips:tripsPage,issue:issuePage,notifications:notifica
 window.renderWorkspace = () => {
   if (!driverProfile) return;
   const current = page === 'detail' ? 'trips' : page;
-  for (const link of shell.querySelectorAll('.side-link[data-page]')) {
+  for (const link of shell.querySelectorAll('.side-link[data-page], .tabbar [data-page]')) {
     if (link.dataset.page === current) link.setAttribute('aria-current','page');
     else link.removeAttribute('aria-current');
   }
