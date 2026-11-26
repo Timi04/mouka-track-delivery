@@ -200,7 +200,16 @@ const loadLogo = () => new Promise(resolve => {
 });
 
 let studioShot;
+export async function truckSnapshot(type, plate, target) {
+  await shoot(type, plate, source => target.getContext('2d').drawImage(source,0,0,target.width,target.height));
+}
 export async function truckPicture(type, plate) {
+  let picture;
+  await shoot(type, plate, source => { picture = source.toDataURL('image/png'); });
+  return picture;
+}
+
+async function shoot(type, plate, use) {
   const image = await loadLogo();
   if (!studioShot) {
     const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true, preserveDrawingBuffer:true});
@@ -227,10 +236,9 @@ export async function truckPicture(type, plate) {
   camera.position.set(aim.x + Math.sin(azimuth) * Math.cos(elevation) * distance, aim.y + Math.sin(elevation) * distance, -Math.cos(azimuth) * Math.cos(elevation) * distance);
   camera.lookAt(aim);
   renderer.render(scene,camera);
-  const picture = renderer.domElement.toDataURL('image/png');
+  use(renderer.domElement);
   scene.remove(truck);
   truck.traverse(item => item.geometry?.dispose());
-  return picture;
 }
 
 export function createTruckViewer() {

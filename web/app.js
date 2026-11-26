@@ -29,6 +29,7 @@ const availableClosed = new Set();
 const deliveryView = {query:'', status:'', type:'', depot:'', page:1, size:5, sort:'trip', dir:-1};
 const deliveryPicked = new Set();
 let trackPending = '';
+const sideOpen = new Map();
 try { if (localStorage.getItem('mouka-available-layout') === 'list') availableLayout = 'list'; } catch {}
 let overviewFilter = 'all';
 let overviewQuery = '';
@@ -70,6 +71,7 @@ function applyTheme() {
   document.querySelector('meta[name="theme-color"]').content = dark ? '#0f1620' : '#f6f7f8';
   app.querySelectorAll('[data-action="theme"]').forEach(button =>
     button.setAttribute('aria-pressed',String(button.dataset.id === themePreference)));
+  app.querySelector('[data-action="side-dark"]')?.setAttribute('aria-checked',String(dark));
 }
 themeMedia.addEventListener('change',applyTheme);
 applyTheme();
@@ -1811,21 +1813,92 @@ function fontSizeControl() {
   return field('Font size',`<select data-font-size>${Object.entries(fontSizes).map(([size,label]) =>
     `<option value="${size}"${fontSize===size?' selected':''}>${label}</option>`).join('')}</select>`);
 }
-function administration(page) {
-  const [label,items] = nav[1];
+function administration() {
   return `<details class="admin-dropup">
-    <summary class="admin-trigger">${icon('settings')}<span><strong>${label}</strong><small>Mouka workspace</small></span>${icon('chevron')}</summary>
-    <div class="admin-panel" aria-label="Administration options">
+    <summary class="admin-trigger" title="Settings">${icon('settings')}<span><strong>Settings</strong><small>Appearance and text size</small></span>${icon('chevron')}</summary>
+    <div class="admin-panel" aria-label="Settings">
       <div class="admin-appearance"><strong>Appearance</strong><div class="theme-controls" role="group" aria-label="Appearance">
         ${Object.entries(themes).map(([key,[name,symbol]]) => `<button type="button" data-action="theme" data-id="${key}" aria-pressed="${themePreference===key}">${icon(symbol)}${name}</button>`).join('')}
       </div>${fontSizeControl()}</div>
-      <nav aria-label="Administration">${items.map(([path,name,symbol]) =>
-        `<a href="#/${path}"${page===path?' aria-current="page"':''}>${icon(symbol)}${name}</a>`).join('')}</nav>
-      <div class="admin-utilities"><a href="#/policies">${icon('document')} Terms &amp; policies</a>
-      <a href="#/help">${icon('help')} Help and support</a></div>
     </div>
   </details>`;
 }
+
+// Shortcuts under a menu item: [target, label, how many records it will show].
+function sideChildren(path) {
+  if (path === 'available') {
+    const groups = groupedTrucks();
+    return availableSections.filter(([key]) => key !== 'other').map(([key,title]) => [key,title,groups[key].length]);
+  }
+  if (path === 'deliveries') {
+    const all = state.trips.map(deliveryInfo);
+    return [['','All deliveries',all.length],
+      ...[['road','In transit'],['bay','At loading bay'],['done','Delivered'],['declined','Declined']].map(([key,label]) => [key,label,all.filter(r => r.group === key).length]),
+      ['stale','Stale GPS',all.filter(r => r.late).length]];
+  }
+  return [];
+}
+
+function sideMenu(page, detail) {
+  const [, operations] = nav[0];
+  const [, management] = nav[1];
+  const entry = path => [...operations,...management].find(item => item[0] === path);
+  const counts = {available:available().length, loading:loading().length, tracking:active().length, deliveries:state.trips.length,
+    fleet:state.fleet.length, verification:state.fleet.filter(v => v.review === 'Pending review').length, users:state.users.length, depots:state.locations.length};
+  // Detail pages keep their parent highlighted.
+  const here = detail && page === 'trip' ? 'deliveries' : detail && page === 'truck' ? 'fleet' : page;
+  const row = (path, name, symbol, badge='') => `<a href="#/${path}" title="${name}" class="nav-link ${here===path?'active':''}" ${page===path?'aria-current="page"':''}>${icon(symbol)}<span>${name}</span>${badge}</a>`;
+  const item = path => {
+    const [, name, symbol] = entry(path);
+    const link = row(path,name,symbol,counts[path] ? `<em>${counts[path]}</em>` : '');
+    const children = sideChildren(path);
+    if (!children.length) return link;
+    const open = sideOpen.get(path) ?? here === path;
+    return `<div class="nav-branch ${open?'open':''}">${link}<button type="button" class="nav-fold" data-action="side-fold" data-id="${path}" aria-expanded="${open}" aria-controls="side-sub-${path}" aria-label="${open?'Hide':'Show'} ${name} shortcuts">${icon('chevron')}</button>
+      <ul id="side-sub-${path}" ${open?'':'hidden'}>${children.map(([key,label,count]) => `<li><button type="button" data-action="side-go" data-id="${path}:${key}" ${page===path && path==='deliveries' && deliveryView.status===key ? 'aria-current="true"' : ''}><span>${label}</span><em>${count}</em></button></li>`).join('')}</ul></div>`;
+  };
+  const group = (label, content) => `<div class="nav-group"><div class="nav-label">${label}</div>${content}</div>`;
+  const unread = unreadCount();
+  const ready = available().length;
+  const onTrip = openTrips().length;
+  return group('Main menu', ['dispatch','available','loading','tracking','deliveries'].map(item).join('') +
+      row('notifications','Notifications','bell',`<em data-unread-count ${unread?'':'hidden'}>${unread}</em>${unread?'<i class="unread"></i>':''}`)) +
+    group('Fleet', ['fleet','verification','depots'].map(item).join('')) +
+    group('Team and support', item('users') + row('help','Help and support','help') + row('policies','Terms & policies','document') +
+      `<button type="button" class="nav-link" data-action="ov-aurora" title="Ask Aurora">${icon('message')}<span>Ask Aurora</span></button>
+       <a href="#/driver-sign-in" class="nav-link" title="Driver app">${icon('truck')}<span>Driver app</span></a>`) +
+    `<a class="side-card" href="#/available">
+      <span class="side-card-head">${tile('truck')}<span><strong>Fleet today</strong><small>${state.fleet.length} trucks registered</small></span></span>
+      <progress value="${ready}" max="${Math.max(state.fleet.length,1)}" aria-label="${ready} of ${state.fleet.length} trucks ready"></progress>
+      <span class="side-card-foot"><span><b>${ready}</b> ready</span><span><b>${onTrip}</b> on a trip</span></span>
+    </a>`;
+}
+
+function followShortcut(id) {
+  const [path,key] = id.split(':');
+  const wasOpen = navOpen;
+  navOpen = false;
+  if (path === 'deliveries') Object.assign(deliveryView,{status:key, query:'', type:'', depot:'', page:1});
+  const arrive = () => {
+    if (path !== 'available') return;
+    const section = app.querySelector(`#av-section-${key}`);
+    if (!section) return;
+    availableClosed.delete(key);
+    section.open = true;
+    section.scrollIntoView({block:'start'});
+    section.querySelector('summary').focus({preventScroll:true});
+  };
+  if (current === path) {
+    if (path === 'available') filters = {};
+    render();
+    arrive();
+  } else {
+    if (wasOpen) render();
+    window.addEventListener('hashchange', () => setTimeout(arrive,60), {once:true});
+    go(path);
+  }
+}
+
 function closeAdministration(restoreFocus=false) {
   const menu = app.querySelector('.admin-dropup[open]');
   if (!menu) return;
@@ -1860,16 +1933,17 @@ function render({focus=false}={}) {
     id ? notFound() : renderers[page] ? renderers[page]() : Object.hasOwn(authTitles,page) ? authPage(page) : notFound();
   const auth = Object.hasOwn(authTitles,page);
   const viewer = account();
-  const counts = {available:available().length, loading:loading().length, tracking:active().length, verification:state.fleet.filter(v=>v.review==='Pending review').length};
+  const menuScroll = app.querySelector('.side-scroll')?.scrollTop ?? 0;
   app.innerHTML = auth ? `<main id="main" class="auth-main" tabindex="-1"><div class="page">${content}</div></main>` : `
   <div class="shell ${railed?'railed':''}">
     <aside id="side" class="sidebar ${navOpen?'open':''}">
       <div class="brand"><a href="#/dispatch" aria-label="Mouka Dispatch home">${logo()}</a><div><strong>Dispatch</strong><small>Mouka Logistics</small></div>
         ${iconBtn('rail',railed?'Expand sidebar':'Collapse sidebar','panel','rail-toggle')}${iconBtn('menu','Close navigation','close','mobile-only side-close')}</div>
       <button type="button" class="side-search" data-action="search" title="Search">${icon('search')}<span>Search</span><kbd>Ctrl K</kbd></button>
-      <nav class="side-scroll" aria-label="Main navigation">${nav.slice(0,1).map(([label,items])=>`<div class="nav-group"><div class="nav-label">${label}</div>${items.map(([path,name,symbol])=>`<a href="#/${path}" title="${name}" class="nav-link ${page===path?'active':''}" ${page===path?'aria-current="page"':''}>${icon(symbol)}<span>${name}</span>${counts[path]?`<em>${counts[path]}</em>`:''}</a>`).join('')}</div>`).join('')}
-        <a href="#/notifications" class="nav-link ${page==='notifications'?'active':''}" ${page==='notifications'?'aria-current="page"':''} title="Notifications">${icon('bell')}<span>Notifications</span><em data-unread-count ${unreadCount()?'':'hidden'}>${unreadCount()}</em>${unreadCount()?'<i class="unread"></i>':''}</a></nav>
-      <div class="side-footer">${administration(page)}${profileMenu(viewer)}</div>
+      <nav class="side-scroll" aria-label="Main navigation">${sideMenu(page,id)}</nav>
+      <div class="side-footer">
+        <button type="button" class="side-dark" role="switch" aria-checked="${document.documentElement.dataset.theme==='dark'}" data-action="side-dark" title="Dark mode">${icon('moon')}<span>Dark mode</span><i aria-hidden="true"></i></button>
+        ${administration()}${profileMenu(viewer)}</div>
     </aside>
     <button type="button" class="overlay ${navOpen?'open':''}" tabindex="-1" aria-label="Close navigation" data-action="menu"></button>
     <div class="workspace"${navOpen?' inert':''}><header class="top"><button type="button" class="icon-btn" data-action="menu" aria-expanded="${navOpen}" aria-controls="side" aria-label="Open navigation">${icon('menu')}</button>
@@ -1878,6 +1952,8 @@ function render({focus=false}={}) {
       <button type="button" class="icon-btn" data-action="activity" aria-label="Notifications">${icon('bell')}${unreadCount()?'<i class="unread"></i>':''}</button>
       </header><main id="main" class="${page === 'tracking' && !id ? 'td-main' : page === 'dispatch' && !id ? 'ov-main' : page === 'available' && !id ? 'av-main' : ['deliveries','loading','notifications'].includes(page) && !id ? 'dv-main' : ''}" tabindex="-1"><div id="connection" ${navigator.onLine?'hidden':''}>${notice('Connection lost. You can browse existing records. Reconnect to save changes.','warn')}</div><div class="page">${content}</div></main></div>
   </div>`;
+  const menu = app.querySelector('.side-scroll');
+  if (menu) menu.scrollTop = menuScroll;
   document.body.classList.toggle('account-access',auth);
   if (page==='driver-sign-in') mountDriverAccess(app.querySelector('#driver-entry'));
   mountTruck();
@@ -2203,6 +2279,19 @@ document.addEventListener('click', e=>{
     app.querySelector('[data-action="rail"]')?.focus({preventScroll:true});
   } else if (action==='av-preview') {
     previewTruck(id);
+  } else if (action==='side-fold') {
+    const open = el.getAttribute('aria-expanded') !== 'true';
+    sideOpen.set(id,open);
+    el.setAttribute('aria-expanded',String(open));
+    el.setAttribute('aria-label',el.getAttribute('aria-label').replace(/^(Show|Hide)/,open?'Hide':'Show'));
+    el.parentElement.classList.toggle('open',open);
+    app.querySelector(`#side-sub-${id}`).hidden = !open;
+  } else if (action==='side-go') {
+    followShortcut(id);
+  } else if (action==='side-dark') {
+    themePreference = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    try { localStorage.setItem('mouka-appearance',themePreference); } catch {}
+    applyTheme();
   } else if (action.startsWith('lb-')) {
     updateBays(action,id);
   } else if (action.startsWith('nt-')) {
